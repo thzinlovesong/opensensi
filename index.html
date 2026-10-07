@@ -1,0 +1,938 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OpenSensi — Pagamento PIX</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800;900&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+
+  :root{
+    --verde:#00ff88;
+    --verde-escuro:#00cc6a;
+    --verde-neon:#39ff14;
+    --preto:#0a0a0a;
+    --branco:#ffffff;
+    --discord:#5865F2;
+    --discord-escuro:#3c45c4;
+  }
+
+  html, body {
+    height:100%;
+    font-family:'Inter', sans-serif;
+    background:var(--preto);
+    color:var(--branco);
+    overflow-x:hidden;
+  }
+
+  #particles {
+    position:fixed; top:0; left:0;
+    width:100%; height:100%;
+    z-index:0; pointer-events:none;
+  }
+
+  .bg-glow{
+    position:fixed; inset:0;
+    background:
+      radial-gradient(circle at 20% 20%, rgba(0,255,136,0.15), transparent 45%),
+      radial-gradient(circle at 80% 80%, rgba(0,204,106,0.12), transparent 50%),
+      radial-gradient(circle at 50% 50%, rgba(57,255,20,0.05), transparent 60%);
+    z-index:0; pointer-events:none;
+  }
+
+  header{
+    position:relative; z-index:10;
+    display:flex; justify-content:space-between; align-items:center;
+    padding:22px 6vw;
+    backdrop-filter: blur(6px);
+    border-bottom:1px solid rgba(0,255,136,0.12);
+  }
+
+  .logo{
+    display:flex; align-items:center; gap:14px;
+    font-weight:900; font-size:1.5rem; letter-spacing:-0.5px;
+  }
+
+  .logo-mark{
+    position:relative;
+    width:56px; height:56px;
+    display:grid; place-items:center;
+    flex-shrink:0;
+    filter: drop-shadow(0 0 14px rgba(0,255,136,0.75)) drop-shadow(0 0 28px rgba(0,255,136,0.35));
+    animation: floatLogo 4s ease-in-out infinite;
+  }
+  @keyframes floatLogo{
+    0%,100%{ transform:translateY(0) scale(1); }
+    50%{ transform:translateY(-3px) scale(1.03); }
+  }
+  .logo-mark img{
+    width:100%; height:100%;
+    object-fit:contain;
+    display:block;
+    background:transparent;
+  }
+  .logo-mark .fallback{
+    width:32px; height:32px;
+    color:var(--verde);
+    filter: drop-shadow(0 0 8px var(--verde));
+  }
+  .logo-text span{ color:var(--verde); }
+
+  .secure-tag{
+    display:flex; align-items:center; gap:8px;
+    font-size:0.78rem; font-weight:600; color:var(--verde);
+    padding:8px 14px; border-radius:100px;
+    background:rgba(0,255,136,0.08);
+    border:1px solid rgba(0,255,136,0.3);
+    letter-spacing:0.4px;
+  }
+  .secure-tag .dot{
+    width:7px;height:7px;border-radius:50%;
+    background:var(--verde); box-shadow:0 0 8px var(--verde);
+    animation:blink 1.4s infinite;
+  }
+  @keyframes blink{ 50%{ opacity:0.3; } }
+
+  .pay-wrapper{
+    position:relative; z-index:5;
+    min-height:calc(100vh - 90px - 70px);
+    display:grid; place-items:center;
+    padding:50px 6vw 30px;
+  }
+
+  .pay-card{
+    position:relative;
+    background:linear-gradient(160deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
+    border:1px solid rgba(0,255,136,0.25);
+    border-radius:28px;
+    padding:40px 38px;
+    backdrop-filter: blur(20px);
+    box-shadow:
+      0 30px 80px rgba(0,0,0,0.7),
+      0 0 60px rgba(0,255,136,0.12),
+      inset 0 1px 0 rgba(255,255,255,0.08);
+    max-width:460px; width:100%;
+    animation:floatCard 6s ease-in-out infinite;
+    transition: transform .5s ease, opacity .5s ease;
+  }
+  @keyframes floatCard{
+    0%,100%{ transform:translateY(0); }
+    50%{ transform:translateY(-10px); }
+  }
+
+  .pay-card::before{
+    content:'';
+    position:absolute; inset:-1px;
+    border-radius:28px;
+    padding:1px;
+    background:linear-gradient(135deg, rgba(0,255,136,0.6), transparent 40%, transparent 60%, rgba(0,255,136,0.4));
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events:none;
+  }
+
+  .step{ display:none; opacity:0; transform: translateY(20px); }
+  .step.active{
+    display:block;
+    animation: stepIn .55s cubic-bezier(.22,1,.36,1) forwards;
+  }
+  @keyframes stepIn{
+    from{ opacity:0; transform: translateY(24px); }
+    to{ opacity:1; transform: translateY(0); }
+  }
+  .step.leaving{ animation: stepOut .35s ease forwards; }
+  @keyframes stepOut{
+    from{ opacity:1; transform: translateY(0); }
+    to{ opacity:0; transform: translateY(-24px); }
+  }
+
+  .pay-title{ text-align:center; margin-bottom:22px; }
+  .pay-title h1{
+    font-size:1.4rem; font-weight:800;
+    letter-spacing:-0.4px; margin-bottom:6px;
+  }
+  .pay-title p{ font-size:0.85rem; color:rgba(255,255,255,0.55); }
+
+  .recipient{
+    display:flex; align-items:center; gap:12px;
+    padding:12px 16px; border-radius:14px;
+    background:rgba(0,255,136,0.06);
+    border:1px solid rgba(0,255,136,0.18);
+    margin-bottom:22px;
+  }
+  .recipient-avatar{
+    width:38px;height:38px;border-radius:50%;
+    background:linear-gradient(135deg, var(--verde), var(--verde-escuro));
+    display:grid; place-items:center;
+    color:#00220f; font-weight:900; font-size:0.9rem;
+    box-shadow:0 0 15px rgba(0,255,136,0.4);
+    flex-shrink:0;
+  }
+  .recipient-info .label{
+    font-size:0.68rem; letter-spacing:0.6px; text-transform:uppercase;
+    color:rgba(255,255,255,0.45); margin-bottom:2px;
+  }
+  .recipient-info .name{ font-weight:700; font-size:0.95rem; }
+
+  /* QR BOX */
+  .qr-box{
+    background:var(--branco);
+    border-radius:24px;
+    padding:22px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    position:relative;
+    box-shadow:0 0 50px rgba(0,255,136,0.4);
+    margin-bottom:22px;
+    overflow:hidden;
+    min-height:300px;
+  }
+  #qrcode{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    position:relative;
+  }
+  #qrcode canvas{
+    display:block;
+    border-radius:8px;
+  }
+
+  .qr-logo-overlay{
+    position:absolute;
+    top:50%;
+    left:50%;
+    transform:translate(-50%, -50%);
+    width:78px;
+    height:78px;
+    background:#ffffff;
+    border-radius:16px;
+    padding:6px;
+    display:grid;
+    place-items:center;
+    box-shadow:0 4px 18px rgba(0,0,0,0.15);
+    z-index:2;
+  }
+  .qr-logo-overlay img{
+    width:100%; height:100%;
+    object-fit:contain;
+    border-radius:10px;
+  }
+  .qr-logo-overlay .fallback{
+    width:40px; height:40px;
+    color:#0a5c2e;
+  }
+
+  .qr-loading{
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:12px;
+    color:#0a0a0a;
+    font-weight:600;
+    font-size:0.85rem;
+    width:260px; height:260px;
+  }
+  .qr-loading .spinner{
+    width:34px; height:34px;
+    border:3px solid rgba(0,204,106,0.2);
+    border-top-color:#00cc6a;
+    border-radius:50%;
+    animation:spin 0.8s linear infinite;
+  }
+  @keyframes spin{ to{ transform:rotate(360deg); } }
+
+  .qr-box.scanned::after{
+    content:'';
+    position:absolute;
+    top:0; left:-50%;
+    width:200%; height:100%;
+    background:linear-gradient(90deg, transparent, rgba(0,255,136,0.5), transparent);
+    animation: scanSweep .9s ease;
+  }
+  @keyframes scanSweep{
+    from{ left:-50%; }
+    to{ left:100%; }
+  }
+
+  .info-note{
+    display:flex; align-items:flex-start; gap:10px;
+    padding:12px 14px; border-radius:12px;
+    background:rgba(0,255,136,0.05);
+    border:1px solid rgba(0,255,136,0.15);
+    font-size:0.78rem;
+    color:rgba(255,255,255,0.7);
+    line-height:1.5;
+    margin-bottom:18px;
+  }
+  .info-note svg{
+    width:16px; height:16px; flex-shrink:0;
+    color:var(--verde); margin-top:1px;
+  }
+  .info-note strong{ color:var(--verde); }
+
+  .actions{ display:flex; flex-direction:column; gap:10px; }
+
+  .btn{
+    width:100%;
+    padding:15px;
+    border:none; border-radius:14px;
+    font-family:inherit;
+    font-size:0.95rem; font-weight:800;
+    letter-spacing:0.3px;
+    cursor:pointer; transition:.3s;
+    display:flex; align-items:center; justify-content:center; gap:8px;
+    position:relative; overflow:hidden;
+    text-decoration:none;
+  }
+  .btn-primary{
+    background:linear-gradient(135deg, var(--verde) 0%, var(--verde-escuro) 100%);
+    color:#00220f;
+    box-shadow:0 10px 30px rgba(0,255,136,0.35);
+  }
+  .btn-primary:hover{
+    transform:translateY(-2px);
+    box-shadow:0 14px 40px rgba(0,255,136,0.55);
+  }
+  .btn-ghost{
+    background:rgba(255,255,255,0.04);
+    color:var(--branco);
+    border:1px solid rgba(255,255,255,0.12);
+  }
+  .btn-ghost:hover{
+    background:rgba(0,255,136,0.08);
+    border-color:rgba(0,255,136,0.4);
+    color:var(--verde);
+  }
+  .btn-discord{
+    background:linear-gradient(135deg, var(--discord) 0%, var(--discord-escuro) 100%);
+    color:#fff;
+    box-shadow:0 10px 30px rgba(88,101,242,0.4);
+  }
+  .btn-discord:hover{
+    transform:translateY(-2px);
+    box-shadow:0 14px 40px rgba(88,101,242,0.6);
+  }
+  .btn::after{
+    content:'';
+    position:absolute; top:0; left:-100%;
+    width:100%; height:100%;
+    background:linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+    transition:.6s;
+  }
+  .btn:hover::after{ left:100%; }
+  .btn svg{ width:17px; height:17px; flex-shrink:0; }
+
+  .secure-note{
+    display:flex; align-items:center; justify-content:center; gap:8px;
+    margin-top:18px;
+    font-size:0.72rem;
+    color:rgba(255,255,255,0.4);
+    text-align:center;
+  }
+  .secure-note svg{ width:13px; height:13px; flex-shrink:0; }
+
+  .success-icon{
+    width:76px; height:76px;
+    margin:0 auto 18px;
+    border-radius:50%;
+    background:linear-gradient(135deg, var(--verde), var(--verde-escuro));
+    display:grid; place-items:center;
+    box-shadow:0 0 40px rgba(0,255,136,0.55);
+    animation: popIn .5s cubic-bezier(.34,1.56,.64,1);
+  }
+  @keyframes popIn{
+    from{ transform: scale(0); }
+    to{ transform: scale(1); }
+  }
+  .success-icon svg{
+    width:38px; height:38px;
+    color:#00220f;
+    stroke-width:3.5;
+  }
+
+  .success-title{
+    text-align:center;
+    margin-bottom:8px;
+    font-size:1.35rem;
+    font-weight:800;
+    letter-spacing:-0.4px;
+  }
+  .success-title .grad{
+    background:linear-gradient(120deg, var(--verde) 0%, var(--verde-neon) 100%);
+    -webkit-background-clip:text;
+    background-clip:text;
+    -webkit-text-fill-color:transparent;
+  }
+  .success-sub{
+    text-align:center;
+    font-size:0.85rem;
+    color:rgba(255,255,255,0.6);
+    line-height:1.55;
+    margin-bottom:24px;
+    padding:0 4px;
+  }
+
+  .divider{
+    display:flex; align-items:center; gap:12px;
+    margin:20px 0;
+    color:rgba(255,255,255,0.35);
+    font-size:0.72rem;
+    letter-spacing:1.5px;
+    text-transform:uppercase;
+  }
+  .divider::before, .divider::after{
+    content:'';
+    flex:1; height:1px;
+    background:rgba(255,255,255,0.1);
+  }
+
+  .toast{
+    position:fixed;
+    bottom:30px; left:50%;
+    transform:translateX(-50%) translateY(100px);
+    background:var(--verde); color:#00220f;
+    padding:14px 26px; border-radius:14px;
+    font-weight:700; font-size:0.9rem;
+    box-shadow:0 10px 40px rgba(0,255,136,0.6);
+    opacity:0;
+    transition:.4s cubic-bezier(.34,1.56,.64,1);
+    z-index:100;
+    display:flex; align-items:center; gap:10px;
+  }
+  .toast.show{
+    transform:translateX(-50%) translateY(0);
+    opacity:1;
+  }
+
+  footer{
+    position:relative; z-index:5;
+    text-align:center;
+    padding:26px 6vw;
+    border-top:1px solid rgba(0,255,136,0.1);
+    color:rgba(255,255,255,0.35);
+    font-size:0.8rem;
+  }
+  footer span{ color:var(--verde); font-weight:600; }
+
+  @media (max-width: 480px){
+    .pay-card{ padding:30px 24px; }
+    header{ padding:18px 5vw; }
+    .logo{ font-size:1.25rem; gap:10px; }
+    .logo-mark{ width:46px; height:46px; }
+    .qr-logo-overlay{ width:66px; height:66px; }
+    .qr-loading{ width:220px; height:220px; }
+    .success-icon{ width:66px; height:66px; }
+    .success-icon svg{ width:32px; height:32px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="bg-glow"></div>
+<canvas id="particles"></canvas>
+
+<header>
+  <div class="logo">
+    <div class="logo-mark" id="logoMark">
+      <svg class="fallback" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M12 2L3 7v10l9 5 9-5V7l-9-5z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+        <path d="M12 8v8M8 12h8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+    </div>
+    <div class="logo-text">Open<span>Sensi</span></div>
+  </div>
+  <div class="secure-tag"><span class="dot"></span> Pagamento Seguro</div>
+</header>
+
+<main class="pay-wrapper">
+  <div class="pay-card">
+
+    <div class="step active" id="step-qr">
+
+      <div class="pay-title">
+        <h1>Pagamento via PIX</h1>
+        <p>Escaneie o QR Code com o app do seu banco</p>
+      </div>
+
+      <div class="recipient">
+        <div class="recipient-avatar">IF</div>
+        <div class="recipient-info">
+          <div class="label">Recebedor</div>
+          <div class="name">Icaro Félix Leal</div>
+        </div>
+      </div>
+
+      <div class="qr-box" id="qrBox">
+        <div id="qrcode">
+          <div class="qr-loading">
+            <div class="spinner"></div>
+            <span>Gerando QR Code...</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="info-note">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"/>
+          <path d="M12 16v-4M12 8h.01"/>
+        </svg>
+        <div>
+          O valor é <strong>definido por você no app do banco</strong> de acordo com sua compra. Sem valor pré-fixado.
+        </div>
+      </div>
+
+      <div class="actions">
+        <button class="btn btn-primary" onclick="copyPix()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="9" y="9" width="13" height="13" rx="2"/>
+            <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
+          </svg>
+          Copiar chave PIX
+        </button>
+        <button class="btn btn-ghost" onclick="goToStep('step-proof')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M20 6L9 17l-5-5"/>
+          </svg>
+          Já realizei o pagamento
+        </button>
+      </div>
+
+      <div class="secure-note">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="3" y="11" width="18" height="11" rx="2"/>
+          <path d="M7 11V7a5 5 0 0110 0v4"/>
+        </svg>
+        Ambiente 100% seguro e criptografado
+      </div>
+
+    </div>
+
+    <div class="step" id="step-proof">
+
+      <div class="success-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M20 6L9 17l-5-5"/>
+        </svg>
+      </div>
+
+      <div class="success-title">
+        Pagamento <span class="grad">confirmado?</span>
+      </div>
+
+      <div class="success-sub">
+        Agora só falta enviar o comprovante no seu <strong>carrinho</strong> ou <strong>ticket de compra</strong> no Discord 💚
+      </div>
+
+      <div class="actions">
+        <a class="btn btn-discord" id="discordBtn" target="_blank" rel="noopener">
+          <svg viewBox="0 0 24 24" fill="currentColor">
+            <path d="M20.317 4.37a19.791 19.791 0 00-4.885-1.515.074.074 0 00-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 00-5.487 0 12.64 12.64 0 00-.617-1.25.077.077 0 00-.079-.037A19.736 19.736 0 003.677 4.37a.07.07 0 00-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 00.031.057 19.9 19.9 0 005.993 3.03.078.078 0 00.084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 00-.041-.106 13.107 13.107 0 01-1.872-.892.077.077 0 01-.008-.128 10.2 10.2 0 00.372-.292.074.074 0 01.077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 01.078.01c.12.098.246.198.373.292a.077.077 0 01-.006.127 12.299 12.299 0 01-1.873.892.077.077 0 00-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 00.084.028 19.839 19.839 0 006.002-3.03.077.077 0 00.032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 00-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z"/>
+          </svg>
+          Ir para o Discord
+        </a>
+        <button class="btn btn-ghost" onclick="goToStep('step-qr')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M19 12H5M12 19l-7-7 7-7"/>
+          </svg>
+          Voltar ao QR Code
+        </button>
+      </div>
+
+      <div class="divider">como enviar</div>
+
+      <div class="info-note">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M9 11l3 3L22 4"/>
+          <path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/>
+        </svg>
+        <div>
+          Volte para o canal do seu <strong>carrinho</strong> ou abra o <strong>ticket de compra</strong> e envie o print do comprovante por lá mesmo.
+        </div>
+      </div>
+
+      <div class="secure-note">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="3" y="11" width="18" height="11" rx="2"/>
+          <path d="M7 11V7a5 5 0 0110 0v4"/>
+        </svg>
+        Seus dados estão protegidos
+      </div>
+
+    </div>
+
+  </div>
+</main>
+
+<footer>
+  © 2025 <span>OpenSensi</span> — Pagamentos via PIX
+</footer>
+
+<div class="toast" id="toast">Chave PIX copiada!</div>
+
+<script>
+/* =====================================================
+   CONFIGURAÇÕES
+   ===================================================== */
+const PIX_KEY        = "dea9e1f4-7e4d-48ba-b38a-2732af05042e";
+const RECIPIENT_NAME = "Icaro Felix Leal";
+const RECIPIENT_CITY = "SAO PAULO";
+const DISCORD_INVITE = "https://discord.gg/Z4Xaa6QZka";
+const LOGO_FILE = "fotoqr.png";
+
+/* =====================================================
+   LOGO NO HEADER — sem fundo, com brilho verde
+   ===================================================== */
+const logoMark = document.getElementById("logoMark");
+const headerLogo = new Image();
+headerLogo.onload = () => {
+  logoMark.innerHTML = "";
+  logoMark.appendChild(headerLogo);
+  headerLogo.alt = "OpenSensi";
+};
+headerLogo.onerror = () => console.warn("⚠️ fotoqr.png não encontrada no header.");
+headerLogo.src = LOGO_FILE;
+
+/* =====================================================
+   PIX — BR Code EMV (sem valor)
+   ===================================================== */
+function emv(id, value){
+  return id + value.length.toString().padStart(2, '0') + value;
+}
+function crc16(payload){
+  let crc = 0xFFFF;
+  for (let i = 0; i < payload.length; i++){
+    crc ^= payload.charCodeAt(i) << 8;
+    for (let j = 0; j < 8; j++){
+      crc = (crc & 0x8000) ? (crc << 1) ^ 0x1021 : (crc << 1);
+      crc &= 0xFFFF;
+    }
+  }
+  return crc.toString(16).toUpperCase().padStart(4, '0');
+}
+function buildPixPayload(){
+  const merchantAccount = emv("26", emv("00", "br.gov.bcb.pix") + emv("01", PIX_KEY));
+  let payload =
+    emv("00", "01") +
+    merchantAccount +
+    emv("52", "0000") +
+    emv("53", "986") +
+    emv("58", "BR") +
+    emv("59", RECIPIENT_NAME.substring(0,25).toUpperCase()) +
+    emv("60", RECIPIENT_CITY.substring(0,15).toUpperCase()) +
+    emv("62", emv("05", "***")) +
+    "6304";
+  payload += crc16(payload);
+  return payload;
+}
+const PIX_PAYLOAD = buildPixPayload();
+
+/* =====================================================
+   QR CODE com DEGRADÊ VERDE — desenhado manualmente
+   Usa qrcode-generator pra pegar a matriz, e pinta cada
+   módulo no canvas com gradiente radial verde → preto.
+   ===================================================== */
+function generateQR(){
+  const container = document.getElementById("qrcode");
+  container.innerHTML = "";
+
+  const isMobile = window.innerWidth <= 480;
+  const size = isMobile ? 220 : 260;
+  const padding = 12;                      // margem branca ao redor
+  const innerSize = size - padding * 2;    // área útil do QR
+
+  // Nível H (30%) — permite cobrir 30% com a logo
+  const qr = qrcode(0, 'H');
+  qr.addData(PIX_PAYLOAD);
+  qr.make();
+
+  const moduleCount = qr.getModuleCount(); // ex: 33x33
+  const cellSize = innerSize / moduleCount;
+
+  // Canvas em alta resolução (retina)
+  const dpr = window.devicePixelRatio || 1;
+  const canvas = document.createElement("canvas");
+  canvas.width = size * dpr;
+  canvas.height = size * dpr;
+  canvas.style.width = size + "px";
+  canvas.style.height = size + "px";
+  const ctx = canvas.getContext("2d");
+  ctx.scale(dpr, dpr);
+
+  // Fundo branco
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, size, size);
+
+  // Gradiente RADIAL verde: neon no centro → verde médio → preto nas bordas
+  const grad = ctx.createRadialGradient(
+    size / 2, size / 2, size * 0.08,   // centro / raio interno
+    size / 2, size / 2, size * 0.72    // centro / raio externo
+  );
+  grad.addColorStop(0,    "#39ff14");  // verde neon no centro
+  grad.addColorStop(0.35, "#00cc6a");  // verde médio
+  grad.addColorStop(0.75, "#0a5c2e");  // verde escuro
+  grad.addColorStop(1,    "#0a0a0a");  // preto nas bordas
+
+  ctx.fillStyle = grad;
+
+  // Desenha cada módulo escuro como bolinha arredondada
+  const r = cellSize * 0.42;             // raio pra cantos arredondados
+  const dotSize = cellSize * 0.92;       // tamanho do pontinho
+  const offset = (cellSize - dotSize) / 2;
+
+  for (let row = 0; row < moduleCount; row++){
+    for (let col = 0; col < moduleCount; col++){
+      if (!qr.isDark(row, col)) continue;
+
+      const x = padding + col * cellSize + offset;
+      const y = padding + row * cellSize + offset;
+
+      // Detecta se é parte dos marcadores de posição (cantos)
+      const isTopLeft     = row < 7 && col < 7;
+      const isTopRight    = row < 7 && col >= moduleCount - 7;
+      const isBottomLeft  = row >= moduleCount - 7 && col < 7;
+
+      if (isTopLeft || isTopRight || isBottomLeft){
+        // Cantos: quadrados arredondados (mais sólidos e legíveis)
+        roundRect(ctx, x, y, dotSize, dotSize, cellSize * 0.28);
+        ctx.fill();
+      } else {
+        // Módulos normais: bolinhas arredondadas
+        roundRect(ctx, x, y, dotSize, dotSize, r);
+        ctx.fill();
+      }
+    }
+  }
+
+  container.appendChild(canvas);
+
+  // Overlay da logo centralizada
+  const overlay = document.createElement("div");
+  overlay.className = "qr-logo-overlay";
+
+  const img = new Image();
+  img.onload = () => {
+    overlay.appendChild(img);
+    container.appendChild(overlay);
+  };
+  img.onerror = () => {
+    overlay.innerHTML = `
+      <svg class="fallback" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M12 2L3 7v10l9 5 9-5V7l-9-5z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+        <path d="M12 8v8M8 12h8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+      </svg>`;
+    container.appendChild(overlay);
+    console.warn("⚠️ fotoqr.png não encontrada no QR — usando fallback.");
+  };
+  img.src = LOGO_FILE;
+  img.alt = "OpenSensi";
+
+  console.log("✅ QR Code com degradê gerado");
+}
+
+function roundRect(ctx, x, y, w, h, r){
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+/* Gera após carregar tudo */
+window.addEventListener("load", () => {
+  const checkLib = setInterval(() => {
+    if (typeof qrcode !== "undefined"){
+      clearInterval(checkLib);
+      // remove o loading
+      const loading = document.querySelector("#qrcode .qr-loading");
+      if (loading) loading.remove();
+      generateQR();
+    }
+  }, 50);
+  setTimeout(() => clearInterval(checkLib), 5000);
+});
+
+/* Regenera em resize (troca 220 ↔ 260) */
+let resizeTimer;
+window.addEventListener("resize", () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => {
+    if (document.getElementById("qrcode")) generateQR();
+  }, 300);
+});
+
+/* =====================================================
+   Discord
+   ===================================================== */
+document.getElementById("discordBtn").href = DISCORD_INVITE;
+
+/* =====================================================
+   STEP SYSTEM
+   ===================================================== */
+function goToStep(nextId){
+  const current = document.querySelector(".step.active");
+  const next = document.getElementById(nextId);
+  if (!next || current === next) return;
+
+  if (current.id === "step-qr"){
+    const qrBox = document.getElementById("qrBox");
+    qrBox.classList.add("scanned");
+    setTimeout(() => qrBox.classList.remove("scanned"), 900);
+  }
+
+  current.classList.add("leaving");
+  setTimeout(() => {
+    current.classList.remove("active", "leaving");
+    next.classList.add("active");
+    next.style.animation = "none";
+    void next.offsetWidth;
+    next.style.animation = "";
+  }, 380);
+}
+
+/* =====================================================
+   Copiar PIX
+   ===================================================== */
+function copyPix(){
+  const text = PIX_KEY;
+  if (navigator.clipboard && window.isSecureContext){
+    navigator.clipboard.writeText(text)
+      .then(() => showToast("Chave PIX copiada! 💚"))
+      .catch(() => fallbackCopy(text));
+  } else {
+    fallbackCopy(text);
+  }
+}
+function fallbackCopy(text){
+  const ta = document.createElement("textarea");
+  ta.value = text;
+  ta.style.position = "fixed";
+  ta.style.opacity = "0";
+  document.body.appendChild(ta);
+  ta.select();
+  try {
+    document.execCommand("copy");
+    showToast("Chave PIX copiada! 💚");
+  } catch (e) {
+    showToast("Não foi possível copiar 😢");
+  }
+  document.body.removeChild(ta);
+}
+
+let toastTimer;
+function showToast(msg){
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove("show"), 2600);
+}
+
+/* =====================================================
+   Partículas verdes
+   ===================================================== */
+const canvas = document.getElementById("particles");
+const ctx = canvas.getContext("2d");
+let particles = [];
+let w, h;
+
+function resizeCanvas(){
+  w = canvas.width = window.innerWidth;
+  h = canvas.height = window.innerHeight;
+}
+resizeCanvas();
+window.addEventListener("resize", resizeCanvas);
+
+const PARTICLE_COUNT = Math.min(110, Math.floor(window.innerWidth / 15));
+const CONNECT_DIST = 140;
+
+class Particle {
+  constructor(){ this.reset(); }
+  reset(){
+    this.x = Math.random() * w;
+    this.y = Math.random() * h;
+    this.vx = (Math.random() - 0.5) * 0.45;
+    this.vy = (Math.random() - 0.5) * 0.45;
+    this.size = Math.random() * 2 + 0.6;
+    this.alpha = Math.random() * 0.6 + 0.25;
+    this.pulse = Math.random() * Math.PI * 2;
+    this.pulseSpeed = Math.random() * 0.02 + 0.008;
+  }
+  update(){
+    this.x += this.vx;
+    this.y += this.vy;
+    this.pulse += this.pulseSpeed;
+    if (this.x < 0 || this.x > w) this.vx *= -1;
+    if (this.y < 0 || this.y > h) this.vy *= -1;
+    this.x = Math.max(0, Math.min(w, this.x));
+    this.y = Math.max(0, Math.min(h, this.y));
+  }
+  draw(){
+    const a = this.alpha * (0.6 + 0.4 * Math.sin(this.pulse));
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(0, 255, 136, ${a})`;
+    ctx.shadowColor = "rgba(0, 255, 136, 0.9)";
+    ctx.shadowBlur = 12;
+    ctx.fill();
+    ctx.shadowBlur = 0;
+  }
+}
+
+function initParticles(){
+  particles = [];
+  for (let i = 0; i < PARTICLE_COUNT; i++) particles.push(new Particle());
+}
+initParticles();
+window.addEventListener("resize", initParticles);
+
+function connectParticles(){
+  for (let i = 0; i < particles.length; i++){
+    for (let j = i + 1; j < particles.length; j++){
+      const dx = particles[i].x - particles[j].x;
+      const dy = particles[i].y - particles[j].y;
+      const dist = Math.sqrt(dx*dx + dy*dy);
+      if (dist < CONNECT_DIST){
+        const opacity = (1 - dist / CONNECT_DIST) * 0.18;
+        ctx.beginPath();
+        ctx.moveTo(particles[i].x, particles[i].y);
+        ctx.lineTo(particles[j].x, particles[j].y);
+        ctx.strokeStyle = `rgba(0, 255, 136, ${opacity})`;
+        ctx.lineWidth = 0.7;
+        ctx.stroke();
+      }
+    }
+  }
+}
+
+let mouse = { x: null, y: null, radius: 160 };
+window.addEventListener("mousemove", e => { mouse.x = e.clientX; mouse.y = e.clientY; });
+window.addEventListener("mouseout", () => { mouse.x = null; mouse.y = null; });
+
+function animate(){
+  ctx.clearRect(0, 0, w, h);
+  particles.forEach(p => {
+    p.update();
+    p.draw();
+    if (mouse.x !== null){
+      const dx = p.x - mouse.x;
+      const dy = p.y - mouse.y;
+      const dist = Math.sqrt(dx*dx + dy*dy);
+      if (dist < mouse.radius && dist > 0.1){
+        const force = (mouse.radius - dist) / mouse.radius;
+        p.x += (dx / dist) * force * 1.8;
+        p.y += (dy / dist) * force * 1.8;
+      }
+    }
+  });
+  connectParticles();
+  requestAnimationFrame(animate);
+}
+animate();
+</script>
+</body>
+</html>
